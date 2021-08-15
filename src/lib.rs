@@ -2,9 +2,8 @@ mod utils;
 extern crate rand;
 extern crate web_sys;
 use rand::thread_rng;
+use std::collections::VecDeque;
 use rand::Rng;
-
-
 use wasm_bindgen::prelude::*;
 
 
@@ -36,7 +35,7 @@ impl Point{
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct Player{
-  points: Vec<Point>,
+  points: VecDeque<Point>,
   direction: DIRECTION
 }
 
@@ -74,7 +73,9 @@ pub struct Game{
 impl Game{
   pub fn new(width:i32, height:i32, density:i32) -> Game {
     let mut rng = thread_rng();
-    let player:Player = Player{points: vec![Point{x:0,y:0}], direction: DIRECTION::UP};
+    let mut p = VecDeque::new();
+    p.push_back(Point{x:0,y:0});
+    let player:Player = Player{points: p, direction: DIRECTION::UP};
     let food:Point = Point{x: rng.gen_range(0, (width/density)-1), y: rng.gen_range(0, (height/density))-1};
     Game{
       resolution: Point{x: width/density, y: height/density},
@@ -109,16 +110,15 @@ impl Game{
     pub fn update(&mut self){
       self.food_catch();
       self.player_move();
-      self.player_check();
+      self.gameover = self.player_check();
     }
 }
 
 impl Game{
 
   fn food_catch(&mut self){
-    let last = self.player.points.len()-1;
-    if self.food.x == self.player.points[last].x &&
-     self.food.y == self.player.points[last].y {
+    if self.food.x == self.player.points[0].x &&
+     self.food.y == self.player.points[0].y {
        self.score+=1;
        let mut rng = thread_rng();
        self.food.y = rng.gen_range(0, self.resolution.y-1);
@@ -127,30 +127,32 @@ impl Game{
        let nx = (self.player.points[0].x+x)%self.resolution.x;
        let ny = (self.player.points[0].y+y)%self.resolution.y;
        let n = Point{x:nx,y:ny};
-       self.player.points.reverse();
-       self.player.points.push(n);
-       self.player.points.reverse();
+       self.player.points.push_back(n);
     }
   }
-
 
   fn player_move(&mut self){
     let (x,y) = self.apply_direction();
-    let last = self.player.points.len()-1;
-    let nx = (self.player.points[last].x+x)%self.resolution.x;
-    let ny = (self.player.points[last].y+y)%self.resolution.y;
-    for i in 0..last{
-      self.player.points[i].x = self.player.points[i+1].x;
-      self.player.points[i].y = self.player.points[i+1].y;
-    }
-    self.player.points[last].x = if nx <0 { self.resolution.x -1 } else {nx};
-    self.player.points[last].y= if ny <0 { self.resolution.y -1 } else {ny};
+    let nx = (self.player.points[0].x+x)%self.resolution.x;
+    let ny = (self.player.points[0].y+y)%self.resolution.y;
+    self.player.points.push_front(
+      Point{x:if nx <0 {self.resolution.x-1} else {nx},
+            y:if ny <0 {self.resolution.y-1} else {ny}});
+    self.player.points.pop_back();
 
   }
-  fn player_check(&mut self){
-     self.gameover = (1..self.player.points.len()).any(|i| self.player.points[i..].contains(&self.player.points[i - 1]));
 
+  fn player_check(&self) -> bool{
+    let len = self.player.points.len();
+    for i in 0..len{
+      for j in 0..len{
+        if i != j && self.player.points[i] == self.player.points[j]{
+          return true
+        }
+      }
     }
+    return false
+  }
 
   fn apply_direction(&self) -> (i32,i32){
     match self.player.direction{
@@ -160,5 +162,4 @@ impl Game{
       DIRECTION::RIGHT => (1,0)
     }
   }
-
 }
